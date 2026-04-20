@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useChat } from './hooks/useChat.js'
 import Sidebar from './components/Sidebar.jsx'
 import Message from './components/Message.jsx'
@@ -38,33 +38,81 @@ const SparkleIcon = () => (
       stroke="#19c37d" strokeWidth="1.6" strokeLinejoin="round"/>
   </svg>
 )
+const ChevronDownIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
+    stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6l5 5 5-5"/>
+  </svg>
+)
 
 export default function App() {
-  const chat           = useChat()
-  const messagesEndRef = useRef(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const chat               = useChat()
+  const scrollRef          = useRef(null)
+  const isUserScrollingRef = useRef(false)
+  const [sidebarOpen, setSidebarOpen]     = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  // Track last streamed content — fires on every token, not just new messages
+  const lastContent = chat.messages[chat.messages.length - 1]?.content ?? ''
+
+  // ── 1. Detect manual scroll up → pause autoscroll + show button ──
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const handleScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      const scrolledUp = distanceFromBottom > 80
+      isUserScrollingRef.current = scrolledUp
+      setShowScrollBtn(scrolledUp)
+    }
+
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
   }, [])
 
-  useEffect(() => { scrollToBottom() }, [chat.messages, scrollToBottom])
+  // ── 2. Follow stream — scroll on every new token ──
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || isUserScrollingRef.current) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [lastContent])
 
-  // Close sidebar on route/conv switch on mobile
-  const handleSwitch = (id) => {
-    chat.switchConversation(id)
-    setSidebarOpen(false)
+  // ── 3. Stream finished → re-enable autoscroll, snap to bottom ──
+  useEffect(() => {
+    if (!chat.isStreaming) {
+      isUserScrollingRef.current = false
+      setShowScrollBtn(false)
+      const el = scrollRef.current
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    }
+  }, [chat.isStreaming])
+
+  // ── 4. Conversation switched → instant jump to bottom ──
+  useEffect(() => {
+    isUserScrollingRef.current = false
+    setShowScrollBtn(false)
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [chat.activeId])
+
+  // ── Scroll button click ──
+  const handleScrollBtnClick = () => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    isUserScrollingRef.current = false
+    setShowScrollBtn(false)
   }
 
-  const handleNew = () => {
-    chat.newConversation()
-    setSidebarOpen(false)
-  }
+  const handleSwitch = (id) => { chat.switchConversation(id); setSidebarOpen(false) }
+  const handleNew    = ()    => { chat.newConversation();      setSidebarOpen(false) }
 
   const isEmpty = chat.messages.length === 0
 
   return (
     <div className={styles.shell}>
+
       {/* ── Desktop sidebar ── */}
       <div className={styles.sidebarDesktop}>
         <Sidebar
@@ -77,7 +125,7 @@ export default function App() {
         />
       </div>
 
-      {/* ── Mobile sidebar drawer ── */}
+      {/* ── Mobile sidebar overlay + drawer ── */}
       {sidebarOpen && (
         <div className={styles.overlay} onClick={() => setSidebarOpen(false)} />
       )}
@@ -92,8 +140,9 @@ export default function App() {
         />
       </div>
 
-      {/* ── Main area ── */}
+      {/* ── Main column ── */}
       <div className={styles.main}>
+
         {/* Mobile header */}
         <header className={styles.mobileHeader}>
           <button className={styles.iconBtn} onClick={() => setSidebarOpen(v => !v)}>
@@ -108,8 +157,8 @@ export default function App() {
           </button>
         </header>
 
-        {/* Messages / empty state */}
-        <div className={styles.scroll}>
+        {/* Messages scroll area */}
+        <div className={styles.scroll} ref={scrollRef}>
           {isEmpty ? (
             <div className={styles.empty}>
               <div className={styles.emptyIcon}><SparkleIcon /></div>
@@ -144,10 +193,21 @@ export default function App() {
                   />
                 )
               })}
-              <div ref={messagesEndRef} style={{ height: '1px' }} />
+              <div style={{ height: '16px', flexShrink: 0 }} />
             </div>
           )}
         </div>
+
+        {/* Scroll-to-bottom button */}
+        {showScrollBtn && (
+          <button
+            className={styles.scrollBtn}
+            onClick={handleScrollBtnClick}
+            title="Scroll to bottom"
+          >
+            <ChevronDownIcon />
+          </button>
+        )}
 
         {/* Input */}
         <ChatInput
@@ -155,6 +215,7 @@ export default function App() {
           isStreaming={chat.isStreaming}
           onStop={chat.stop}
         />
+
       </div>
     </div>
   )
