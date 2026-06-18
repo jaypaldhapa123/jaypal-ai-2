@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react'
 
 // const WORKER_URL = 'https://jaypalai.jaypaldhapa85.workers.dev/'
-const WORKER_URL = 'https://my-backend.jaypaldhapa7990.workers.dev/'
+//const WORKER_URL = 'https://my-backend.jaypaldhapa7990.workers.dev/'
+const WORKER_URL = 'https://delicate-leaf-e97f.jaypaldhapa7990.workers.dev/api/chat'
 
 function createId() {
   return Math.random().toString(36).slice(2, 10)
